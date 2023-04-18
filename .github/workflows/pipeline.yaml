@@ -17,7 +17,7 @@ jobs:
           helm plugin update gcs
           cp -rf /root/.config ${HOME}/.config
           echo $gcloud_key > ${HOME}/.config/gcloud/application_default_credentials.json
-          gcloud auth activate-service-account --key-file /root/.config/gcloud/application_default_credentials.json
+          gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud config set core/project root-anvil-365716  
           
       - name: check compare chart versions 
