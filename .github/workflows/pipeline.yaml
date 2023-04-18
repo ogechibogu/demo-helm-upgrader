@@ -11,7 +11,7 @@ jobs:
         
       - name: install dependencies 
         run: |
-          gcloud components install gsutil
+          helm plugin update gcs
           
       - name: check compare chart versions 
         run: |
