@@ -13,6 +13,9 @@ jobs:
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
+          echo $GCLOUD_ACCESS_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
+          gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
+          gcloud config set project $GCP_PROJECT_ID
           
       - name: check compare chart versions 
         run: |
