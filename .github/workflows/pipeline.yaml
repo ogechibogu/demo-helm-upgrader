@@ -9,13 +9,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         
-      - name: install dependencies 
+      - name: install dependencies
+        env:
+          gcloud_key: ${{ secrets.GCLOUD_ACCESS_KEY }}
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
-          SECRET_JSON=${{ secrets.GCLOUD_ACCESS_KEY }} 
-          echo $SECRET_JSON
           ls -a /root/.config/gcloud
+          echo $gcloud_key
+   
           #/root/.config/gcloud/application_default_credentials.json
           #gcloud auth activate-service-account --key-file /root/.config/gcloud/application_default_credentials.json
           #gcloud config set project $GCP_PROJECT_ID
