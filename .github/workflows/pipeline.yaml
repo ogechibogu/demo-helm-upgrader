@@ -8,6 +8,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        
+      - name: install dependencies 
+        run: |
+          gcloud components install gsutil
+          
       - name: check compare chart versions 
         run: |
           echo "git hub actions is the way"
