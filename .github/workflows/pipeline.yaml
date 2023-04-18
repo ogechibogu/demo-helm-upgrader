@@ -3,7 +3,8 @@ on:
   workflow_dispatch:
 jobs:
   Update:
-    runs-on: ogechibogu/docker-helm:stable
+    runs-on: ubuntu-latest
+    container: ogechibogu/docker-helm:stable
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
