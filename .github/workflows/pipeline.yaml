@@ -13,7 +13,7 @@ jobs:
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
-          echo $GCLOUD_ACCESS_KEY > /root/.config/gcloud/application_default_credentials.json
+          echo ${{ secrets.GCLOUD_ACCESS_KEY }} > /root/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file /root/.config/gcloud/application_default_credentials.json
           gcloud config set project $GCP_PROJECT_ID
           
