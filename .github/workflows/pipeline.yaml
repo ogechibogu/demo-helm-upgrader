@@ -11,14 +11,15 @@ jobs:
         
       - name: install dependencies
         env:
-          gcloud_key: ${{ secrets.GCLOUD_ACCESS_KEY }}
+          GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }}
+          PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
           cp -rf /root/.config ${HOME}/.config
-          echo $gcloud_key > ${HOME}/.config/gcloud/application_default_credentials.json
+          echo $GCLOUD_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
-          gcloud config set core/project root-anvil-365716 --quiet
+          gcloud config set core/project $PROJECT_ID --quiet
           
       - name: check compare chart versions 
         run: |
