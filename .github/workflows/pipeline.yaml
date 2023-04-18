@@ -19,7 +19,7 @@ jobs:
           cp -rf /root/.config ${HOME}/.config
           echo $GCLOUD_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
-          gcloud config set core/project $PROJECT_ID --quiet
+          gcloud config set core/project root-anvil-365716 --quiet
           
       - name: check compare chart versions 
         run: |
