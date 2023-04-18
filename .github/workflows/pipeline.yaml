@@ -17,7 +17,7 @@ jobs:
           helm plugin update gcs
           echo $gcloud_key > /root/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file /root/.config/gcloud/application_default_credentials.json
-          gcloud config set project $GCP_PROJECT_ID
+          gcloud config set core/project $GCP_PROJECT_ID
           
       - name: check compare chart versions 
         run: |
@@ -30,4 +30,3 @@ jobs:
           echo "charts are up to date"
      
     
-
