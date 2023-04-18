@@ -11,6 +11,7 @@ jobs:
         
       - name: install dependencies 
         run: |
+          helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
           
       - name: check compare chart versions 
