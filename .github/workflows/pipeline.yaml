@@ -10,9 +10,9 @@ jobs:
         uses: actions/checkout@v2
       - name: check compare chart versions 
         run: |
-          helm repo add gcs-repo gs://chart-museum-007/charts 
+          echo "git hub actions is the way"
           helm repo add bitnami https://charts.bitnami.com/bitnami
-          helm repo list
+          gcloud auth list
       - name: Update versions
         run: |
           echo "charts are up to date"
