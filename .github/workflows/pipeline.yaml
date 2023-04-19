@@ -25,7 +25,7 @@ jobs:
         run: |
           helm repo add gcs-repo gs://chart-museum-007/charts
           CHARTS=$(ls -d */ | sed 's|/||')
-          for C in CHARTS;do
+          for C in $CHARTS;do
             VENDOR_REPO_NAME=$(yq -e .repo.name ${C}/mirror.yaml)
             VENDOR_REPO=$(yq -e .repo.repository ${C}/mirror.yaml)
             helm repo add ${VENDOR_REPO_NAME} ${VENDOR_REPO}
