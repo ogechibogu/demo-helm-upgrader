@@ -42,8 +42,9 @@ jobs:
               mkdir temp && cd temp
               helm pull ${VENDOR_REPO_NAME}/${C} --untar
               helm package rm -rf ${C} 
-              rm -rf ${C} 
-          done
+              rm -rf ${C}
+            fi
+          done 
       - name: Update versions
         run: |
           echo "charts are up to date"
