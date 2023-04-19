@@ -23,11 +23,27 @@ jobs:
           
       - name: check compare chart versions 
         run: |
-          echo "git hub actions is the way"
-          helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo add gcs-repo gs://chart-museum-007/charts
           CHARTS=$(ls -d */ | sed 's|/||')
-          echo $CHARTS
+          for C in CHARTS;do
+            VENDOR_REPO_NAME=$(yq -e .repo.name ${C}/mirror.yaml)
+            VENDOR_REPO=$(yq -e .repo.repository ${C}/mirror.yaml)
+            helm repo add ${VENDOR_REPO_NAME} ${VENDOR_REPO}
+            CHART_VERSION=$(yq -e .version ${C}/mirror.yaml)
+            VENDOR_VERSION=$(helm search repo ${VENDOR_REPO_NAME}/${C} -o yaml | yq -r '.[].version')
+            
+            if [ $CHART_VERSION == $VENDOR_VERSION ];do
+              echo "chart are up to date" 
+            else
+              if [ -d "temp" ]; then
+                echo "Deleting existing temp folder..."
+                rm -rf temp
+              fi
+              mkdir temp && cd temp
+              helm pull ${VENDOR_REPO_NAME}/${C} --untar
+              helm package rm -rf ${C} 
+              rm -rf ${C} 
+          done
       - name: Update versions
         run: |
           echo "charts are up to date"
