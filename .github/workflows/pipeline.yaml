@@ -41,7 +41,7 @@ jobs:
               fi
               mkdir temp && cd temp
               helm pull ${VENDOR_REPO_NAME}/${C} --untar
-              helm package rm -rf ${C} 
+              helm package ${C} 
               rm -rf ${C}
             fi
           done 
