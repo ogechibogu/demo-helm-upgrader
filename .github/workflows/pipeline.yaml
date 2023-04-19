@@ -26,6 +26,7 @@ jobs:
           helm repo add gcs-repo gs://chart-museum-007/charts
           CHARTS=$(ls -d */ | sed 's|/||')
           for C in $CHARTS;do
+            echo "checking $C for updates" 
             VENDOR_REPO_NAME=$(yq -e .repo.name ${C}/mirror.yaml)
             VENDOR_REPO=$(yq -e .repo.repository ${C}/mirror.yaml)
             helm repo add ${VENDOR_REPO_NAME} ${VENDOR_REPO}
@@ -33,7 +34,7 @@ jobs:
             VENDOR_VERSION=$(helm search repo ${VENDOR_REPO_NAME}/${C} -o yaml | yq -r '.[].version')
             
             if [ $CHART_VERSION == $VENDOR_VERSION ];then
-              echo "chart are up to date" 
+              echo " $C chart is up to date" 
             else
               if [ -d "temp" ]; then
                 echo "Deleting existing temp folder..."
@@ -42,7 +43,8 @@ jobs:
               mkdir temp && cd temp
               helm pull ${VENDOR_REPO_NAME}/${C} --untar
               helm package ${C} 
-              rm -rf ${C}
+              rm -rf ${C} && cd ..
+              rm -rf temp
             fi
           done 
       - name: Update versions
