@@ -26,7 +26,7 @@ jobs:
           echo "git hub actions is the way"
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm repo add gcs-repo gs://chart-museum-007/charts
-          CHARTS=$(ls -d */ | sed 's|/||')
+          CHARTS=$(ls -d $GITHUB_WORKSPACE/*/ | sed 's|/||')
           echo $CHARTS
       - name: Update versions
         run: |
