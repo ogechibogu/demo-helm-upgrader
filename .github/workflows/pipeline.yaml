@@ -32,7 +32,7 @@ jobs:
             CHART_VERSION=$(yq -e .version ${C}/mirror.yaml)
             VENDOR_VERSION=$(helm search repo ${VENDOR_REPO_NAME}/${C} -o yaml | yq -r '.[].version')
             
-            if [ $CHART_VERSION == $VENDOR_VERSION ];do
+            if [ $CHART_VERSION == $VENDOR_VERSION ];then
               echo "chart are up to date" 
             else
               if [ -d "temp" ]; then
