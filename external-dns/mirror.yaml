@@ -1,3 +1,5 @@
 name: "external-dns"
-repository: "https://charts.bitnami.com/bitnami"
 version: "6.13.0"
+repo:
+  name: "bitnami"
+  repository: "https://charts.bitnami.com/bitnami"
