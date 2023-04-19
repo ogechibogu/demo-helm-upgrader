@@ -12,14 +12,15 @@ jobs:
       - name: install dependencies
         env:
           GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }}
-          PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+          PROJECT_ID: ${{ secrets.GCLOUD_PROJECT_ID }}
+          GCR: gcr.io/root-anvil-365716/test-images
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
           cp -rf /root/.config ${HOME}/.config
           echo $GCLOUD_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
-          gcloud config set core/project root-anvil-365716 --quiet
+          gcloud config set core/project  $PROJECT_ID --quiet
           
       - name: check compare chart versions 
         run: |
@@ -36,12 +37,24 @@ jobs:
             if [ $CHART_VERSION == $VENDOR_VERSION ];then
               echo " $C chart is up to date" 
             else
+              echo " updating $C from version $CHART_VERSION to version $VENDOR_VERSION"
               if [ -d "temp" ]; then
                 echo "Deleting existing temp folder..."
                 rm -rf temp
               fi
               mkdir temp && cd temp
               helm pull ${VENDOR_REPO_NAME}/${C} --untar
+              
+              if [ -f "../$C/modify.sh" ]; then
+                echo "Running modify.sh..."
+              fi
+              
+              DOCKER_IMAGES=$(helm template $C |grep image: | sed 's/image://' | sed 's/^[[:space:]]*//')
+              for I in $DOCKER_IMAGES;do
+                docker pull $I
+                docker tag 
+                docker push 
+              done
               helm package ${C} 
               rm -rf ${C} && cd ..
               rm -rf temp
