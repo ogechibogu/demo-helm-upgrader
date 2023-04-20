@@ -16,12 +16,12 @@ jobs:
         
       - name: configure git
         env:
-          TOKEN: ${{ secrets.PAT }}
+          GIT_KEY: ${{ secrets.PAT }}
         run: |
           git config --global user.name "${GITHUB_ACTOR}"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git config --global credential.helper store
-          echo "https://${GITHUB_ACTOR}:${{TOKEN}}@github.com" >> ${HOME}/.git-credentials
+          echo "https://${GITHUB_ACTOR}:${{GIT_KEY}}@github.com" >> ${HOME}/.git-credentials
       
       - name: install dependencies
         env:
