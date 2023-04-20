@@ -53,7 +53,7 @@ jobs:
               docker pull $DOCKER_IMAGES
               
               IMAGE_NAME=$(echo $DOCKER_IMAGES | sed 's|docker.io/||' | awk -F: '{print $1}')
-              TAG=$(echo $IMAGE_REF | awk -F: '{print $2}')
+              TAG=$(echo $DOCKER_IMAGES | awk -F: '{print $2}')
               echo verifying something
               echo "$IMAGE_NAME"
               echo "$TAG"
