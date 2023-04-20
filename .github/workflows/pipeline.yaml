@@ -51,9 +51,15 @@ jobs:
               
               DOCKER_IMAGES=$(helm template $C |grep image: | sed 's/image://' | sed 's/^[[:space:]]*//')
               docker pull $DOCKER_IMAGES
-              IMAGE_NAME=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.repository')
-              TAG=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.tags')
-              echo "verifying somethgin $IMAGE_NAME $TAG $GCR"
+              
+              IMAGE_NAME=$(echo $DOCKER_IMAGES | sed 's|docker.io/||' | awk -F: '{print $1}')
+              TAG=$(echo $IMAGE_REF | awk -F: '{print $2}')
+              echo verifying something
+              echo "$IMAGE_NAME"
+              echo "$TAG"
+              
+              #IMAGE_NAME=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.repository')
+              #TAG=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.tags')
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
               docker push $GCR/$IMAGE_NAME:$TAG
               $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
