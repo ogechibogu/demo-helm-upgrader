@@ -59,7 +59,10 @@ jobs:
               docker images
               docker push $GCR/$IMAGE_NAME:$TAG
               $DIGEST=$(gcloud container images describe $GCR/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
+              echo "checking something"
               echo $DIGEST
+              
+              echo "end check"
               REPLACE_KEY=$(yq e -o=json $C/values.yaml | jq -r --arg TAG "$TAG" 'paths as $p | select(getpath($p) == $TAG) | $p | map(if type=="number" then "["+tostring+"]" else tostring end) | join(".")' | sed 's/.tag//g')
               yq e ".$REPLACE.digest = \"$DIGEST\"" -i $C/values.yaml
                 
