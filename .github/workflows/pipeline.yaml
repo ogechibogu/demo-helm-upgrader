@@ -21,6 +21,7 @@ jobs:
           gcloud config set core/project  root-anvil-365716 --quiet
           helm repo add gcs-repo gs://chart-museum-007/charts
           gcloud auth configure-docker --quiet
+          gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://gcr.io
          
       - name: updated
         run: |
@@ -56,8 +57,6 @@ jobs:
               
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
               docker images
-              gcloud auth list
-              gcloud auth configure-docker --quiet
               docker push $GCR/$IMAGE_NAME:$TAG
               $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
               echo $DIGEST
