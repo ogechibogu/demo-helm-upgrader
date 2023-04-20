@@ -61,12 +61,13 @@ jobs:
               gcloud container images describe $GCR/$IMAGE_NAME:$TAG > image.yaml
               DIGEST=$(yq -e .image_summary.digest image.yaml)
               rm image.yaml
-              echo "checking something"
-              echo $DIGEST
               
-              echo "end check"
+              echo "checking something"
               REPLACE_KEY=$(yq e -o=json $C/values.yaml | jq -r --arg TAG "$TAG" 'paths as $p | select(getpath($p) == $TAG) | $p | map(if type=="number" then "["+tostring+"]" else tostring end) | join(".")' | sed 's/.tag//g')
-              yq e ".$REPLACE.digest = \"$DIGEST\"" -i $C/values.yaml
+              echo $REPLACE_KEY
+              
+              
+              yq e ".$REPLACE_KEY.digest = \"$DIGEST\"" -i $C/values.yaml
                 
               docker image rm $IMAGE_NAME:$TAG
               docker image rm $GCR/$IMAGE_NAME:$TAG
