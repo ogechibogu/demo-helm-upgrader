@@ -52,13 +52,9 @@ jobs:
               
               DOCKER_IMAGES=$(helm template $C |grep image: | sed 's/image://' | sed 's/^[[:space:]]*//')
               docker pull $DOCKER_IMAGES
-              docker images
               IMAGE_NAME=$(echo $DOCKER_IMAGES | sed 's|docker.io/||' | awk -F: '{print $1}')
               TAG=$(echo $DOCKER_IMAGES | awk -F: '{print $2}')
-              echo verifying something
-              echo $GCR
-              echo "$IMAGE_NAME"
-              echo "$TAG"
+              
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
               docker images
               docker push $GCR/$IMAGE_NAME:$TAG
