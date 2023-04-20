@@ -93,7 +93,6 @@ jobs:
               
               yq e ".version = \"$VENDOR_VERSION\"" -i $C/mirror.yaml
               git add . && git commit -m "automatic upgrade of $C chart"
-              https://github.com
               git push https://${GITHUB_ACTOR}:${GIT_KEY}$@github.com/${PROJECT} HEAD:main
               echo "$C updated successfully"
             fi
