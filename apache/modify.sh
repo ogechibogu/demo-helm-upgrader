@@ -1,3 +1,3 @@
 #!/bin/bash
 
-echo "modifying chart ........."
+echo "modifying apache ........."
