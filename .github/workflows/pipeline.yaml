@@ -3,7 +3,7 @@ name: Upgrade helm chart
 env:
   GCR: gcr.io/root-anvil-365716/test-images
   PROJECT_ID: root-anvil-365716
-  GIT_KEY: ${{ secrets.PAT }}
+  
   
 on:
   workflow_dispatch:
@@ -16,6 +16,8 @@ jobs:
         uses: actions/checkout@v2
         
       - name: configure git
+        env: 
+          GIT_KEY: ${{ secrets.ACCESS_TOKEN }}
         run: |
           git config --global user.name "${GITHUB_ACTOR}"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
