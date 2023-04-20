@@ -1,5 +1,0 @@
-image_summary:
-  digest: sha256:6cb2e58647fc834e751ed3ff2618757f854e8eea6baa9872b241a5b4922cd2f9
-  fully_qualified_digest: gcr.io/root-anvil-365716/test-images/kong@sha256:6cb2e58647fc834e751ed3ff2618757f854e8eea6baa9872b241a5b4922cd2f9
-  registry: gcr.io
-  repository: root-anvil-365716/test-images/kong
