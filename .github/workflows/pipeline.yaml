@@ -1,4 +1,8 @@
 name: Upgrade helm chart
+
+env:
+  GCR: gcr.io/root-anvil-365716/test-images
+  
 on:
   workflow_dispatch:
 jobs:
@@ -25,14 +29,15 @@ jobs:
          
       - name: check for updates
         run: |
+          echo first check for vairbales
+          echo $GCR
           CHARTS=$(ls -d */ | sed 's|/||')
-          GCR="gcr.io/root-anvil-365716/test-images"
           for C in $CHARTS;do
             echo "checking $C for updates" 
             VENDOR_REPO_NAME=$(yq -e .repo.name ${C}/mirror.yaml)
             VENDOR_REPO=$(yq -e .repo.repository ${C}/mirror.yaml)
             helm repo add ${VENDOR_REPO_NAME} ${VENDOR_REPO}
-            
+            GCR="gcr.io/root-anvil-365716/test-images"
             CHART_VERSION=$(yq -e .version ${C}/mirror.yaml)
             VENDOR_VERSION=$(helm search repo ${VENDOR_REPO_NAME}/${C} -o yaml | yq -r '.[].version')
             
