@@ -2,7 +2,6 @@ name: Upgrade helm chart
 
 env:
   GCR: gcr.io/root-anvil-365716/test-images
-  PROJECT: ogechibogu/demo-helm-upgrader.git
   PROJECT_ID: root-anvil-365716
   GIT_KEY: ${{ secrets.PAT }}
   GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
@@ -93,7 +92,8 @@ jobs:
               
               yq e ".version = \"$VENDOR_VERSION\"" -i $C/mirror.yaml
               git add . && git commit -m "automatic upgrade of $C chart"
-              git push https://${GITHUB_ACTOR}:${GIT_KEY}$@github.com/${PROJECT} HEAD:main
+              git push https://${GITHUB_ACTOR}:${GIT_KEY}$@github.com/ogechibogu/demo-helm-upgrader.git
+
               echo "$C updated successfully"
             fi
           done
