@@ -9,21 +9,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         
-      - name: install dependencies
+      - name: updated
         env:
-          GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }}
-      
+          GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
         run: |
+        
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
           cp -rf /root/.config ${HOME}/.config
           echo $GCLOUD_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud config set core/project  root-anvil-365716 --quiet
-          
-      - name: check compare chart versions 
-        run: |
           helm repo add gcs-repo gs://chart-museum-007/charts
+          
           CHARTS=$(ls -d */ | sed 's|/||')
           GCR="gcr.io/root-anvil-365716/test-images"
           for C in $CHARTS;do
