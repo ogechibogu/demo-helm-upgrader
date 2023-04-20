@@ -13,7 +13,7 @@ jobs:
         env:
           GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }}
           PROJECT_ID: ${{ secrets.GCLOUD_PROJECT_ID }}
-          GCR: "gcr.io/root-anvil-365716/test-images"
+          GCR: ${{ env.GCR }}
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
