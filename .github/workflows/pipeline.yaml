@@ -56,6 +56,8 @@ jobs:
               
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
               docker images
+              gcloud auth list
+              gcloud auth configure-docker --quiet
               docker push $GCR/$IMAGE_NAME:$TAG
               $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
               echo $DIGEST
