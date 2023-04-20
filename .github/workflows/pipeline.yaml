@@ -14,6 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         
+      - name: configure git
+        env:
+          TOKEN: ${{ secrets.PAT }}
+        run: |
+          git config --global user.name "${GITHUB_ACTOR}"
+          git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git config --global credential.helper store
+          echo "https://${GITHUB_ACTOR}:${{TOKEN}}@github.com" >> ${HOME}/.git-credentials
+      
       - name: install dependencies
         env:
           GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
