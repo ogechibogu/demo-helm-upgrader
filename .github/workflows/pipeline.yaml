@@ -55,11 +55,13 @@ jobs:
               IMAGE_NAME=$(echo $DOCKER_IMAGES | sed 's|docker.io/||' | awk -F: '{print $1}')
               TAG=$(echo $DOCKER_IMAGES | awk -F: '{print $2}')
               echo verifying something
+              echo $GCR
               echo "$IMAGE_NAME"
               echo "$TAG"
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
-              docker push $GCR/$IMAGE_NAME:$TAG
-              $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
+              docker images
+              #docker push $GCR/$IMAGE_NAME:$TAG
+              #$DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
                 
               REPLACE_KEY=$(yq e -o=json $C/values.yaml | jq -r --arg TAG "$TAG" 'paths as $p | select(getpath($p) == $TAG) | $p | map(if type=="number" then "["+tostring+"]" else tostring end) | join(".")' | sed 's/.tag//g')
               yq e ".$REPLACE.digest = \"$DIGEST\"" -i $C/values.yaml
