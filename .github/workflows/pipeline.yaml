@@ -85,7 +85,7 @@ jobs:
               
               helm template ${C} |grep image:
               helm package ${C}
-              helm gcs push ${C}-${VENDOR_VERSION}.tgz ${VENDOR_REPO_NAME}             
+              helm-gcs push ${C}-${VENDOR_VERSION}.tgz ${VENDOR_REPO_NAME}             
               helm repo update 
               cd .. && rm -rf temp
               
