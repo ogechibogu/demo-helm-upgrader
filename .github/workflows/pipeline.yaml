@@ -54,6 +54,7 @@ jobs:
                 docker pull $I
                 IMAGE_NAME=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.repository')
                 TAG=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.tags')
+                echo "verifying somethgin $IMAGE_NAME $TAG $GCR"
                 docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
                 docker push $GCR/$IMAGE_NAME:$TAG
                 $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
