@@ -9,11 +9,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
         
-      - name: updated
+      - name: install dependencies
         env:
           GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
         run: |
-        
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
           cp -rf /root/.config ${HOME}/.config
@@ -21,7 +20,10 @@ jobs:
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud config set core/project  root-anvil-365716 --quiet
           helm repo add gcs-repo gs://chart-museum-007/charts
-          
+          gcloud auth configure-docker --quiet
+         
+      - name: updated
+        run: |
           CHARTS=$(ls -d */ | sed 's|/||')
           GCR="gcr.io/root-anvil-365716/test-images"
           for C in $CHARTS;do
@@ -56,7 +58,7 @@ jobs:
               docker images
               docker push $GCR/$IMAGE_NAME:$TAG
               $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
-                
+              echo $DIGEST
               REPLACE_KEY=$(yq e -o=json $C/values.yaml | jq -r --arg TAG "$TAG" 'paths as $p | select(getpath($p) == $TAG) | $p | map(if type=="number" then "["+tostring+"]" else tostring end) | join(".")' | sed 's/.tag//g')
               yq e ".$REPLACE.digest = \"$DIGEST\"" -i $C/values.yaml
                 
