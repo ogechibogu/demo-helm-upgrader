@@ -58,8 +58,9 @@ jobs:
               docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
               docker images
               docker push $GCR/$IMAGE_NAME:$TAG
-              gcloud container images describe $GCR/$IMAGE_NAME:$TAG
-              #$DIGEST=$(gcloud container images describe $GCR/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
+              gcloud container images describe $GCR/$IMAGE_NAME:$TAG > image.yaml
+              DIGEST=$(yq -e .image_summary.digest image.yaml)
+              rm image.yaml
               echo "checking something"
               echo $DIGEST
               
