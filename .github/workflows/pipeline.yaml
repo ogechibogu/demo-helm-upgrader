@@ -82,7 +82,7 @@ jobs:
               rm -rf ${C} && cd ..
               rm -rf temp
               
-              yq e ".version = \"$VENDOR_VERSION\"" -i ../$C/mirror.yaml
+              yq e ".version = \"$VENDOR_VERSION\"" -i $C/mirror.yaml
               git add . && git commit -m "automatic upgrade of $C chart" && git push
               echo "$C updated successfully"
             fi
