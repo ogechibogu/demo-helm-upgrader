@@ -13,7 +13,7 @@ jobs:
         env:
           GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }}
           PROJECT_ID: ${{ secrets.GCLOUD_PROJECT_ID }}
-          GCR: ${{ env.GCR }}
+  
         run: |
           helm plugin install https://github.com/hayorov/helm-gcs.git --version 0.4.0
           helm plugin update gcs
@@ -26,6 +26,7 @@ jobs:
         run: |
           helm repo add gcs-repo gs://chart-museum-007/charts
           CHARTS=$(ls -d */ | sed 's|/||')
+          GCR="gcr.io/root-anvil-365716/test-images"
           for C in $CHARTS;do
             echo "checking $C for updates" 
             VENDOR_REPO_NAME=$(yq -e .repo.name ${C}/mirror.yaml)
