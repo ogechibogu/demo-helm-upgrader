@@ -1,5 +1,5 @@
 name: "apache"
-version: "9.3.3"
+version: "9.3.0"
 repo:
   name: "bitnami"
   repository: "https://charts.bitnami.com/bitnami"
