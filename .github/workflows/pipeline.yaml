@@ -52,12 +52,26 @@ jobs:
               DOCKER_IMAGES=$(helm template $C |grep image: | sed 's/image://' | sed 's/^[[:space:]]*//')
               for I in $DOCKER_IMAGES;do
                 docker pull $I
-                docker tag 
-                docker push 
+                IMAGE_NAME=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.repository')
+                TAG=$(docker images --format='{"repository":"{{.Repository}}","tags":{{json .Tag}},"id":"{{.ID}}","size":"{{.Size}}"}' | jq -r '.tags')
+                docker tag $IMAGE_NAME:$TAG $GCR/$IMAGE_NAME:$TAG
+                docker push $GCR/$IMAGE_NAME:$TAG
+                $DIGEST=$(google-cloud-sdk/bin/gcloud container images describe $registry/$IMAGE_NAME:$TAG --format=json | jq -r '.image_summary.digest')
+                
+                REPLACE_KEY=$(yq e -o=json $C/values.yaml | jq -r --arg TAG "$TAG" 'paths as $p | select(getpath($p) == $TAG) | $p | map(if type=="number" then "["+tostring+"]" else tostring end) | join(".")' | sed 's/.tag//g')
+                yq e ".$REPLACE.digest = \"$DIGEST\"" -i $C/values.yaml
+                
+                docker image rm $IMAGE_NAME:$TAG
+                docker image rm $GCR/$IMAGE_NAME:$TAG
               done
+              yq e ".global.imageRegistry = \"$GCR\"" -i $C/values.yaml
+              
+              helm template ${C} |grep image:
               helm package ${C} 
               rm -rf ${C} && cd ..
               rm -rf temp
+              
+              echo "$C updated successfully"
             fi
           done 
       - name: Update versions
