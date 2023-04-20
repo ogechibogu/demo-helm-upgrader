@@ -85,14 +85,14 @@ jobs:
               
               helm template ${C} |grep image:
               helm package ${C}
-              #helm gcs push temp/* ${VENDOR_REPO_NAME}
-              #helm repo update 
+              helm gcs push temp/* ${VENDOR_REPO_NAME}
+              helm repo update 
               rm -rf ${C} && cd ..
               rm -rf temp
               
               yq e ".version = \"$VENDOR_VERSION\"" -i $C/mirror.yaml
               git add . && git commit -m "automatic upgrade of $C chart"
-              git push
+              git push -q
 
               echo "$C updated successfully"
             fi
