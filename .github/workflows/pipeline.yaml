@@ -23,15 +23,13 @@ jobs:
           cp -rf /root/.config ${HOME}/.config
           echo $GCLOUD_KEY > ${HOME}/.config/gcloud/application_default_credentials.json
           gcloud auth activate-service-account --key-file ${HOME}/.config/gcloud/application_default_credentials.json
-          gcloud config set core/project  root-anvil-365716 --quiet
+          gcloud config set core/project  $PROJECT_ID --quiet
           helm repo add gcs-repo gs://chart-museum-007/charts
           gcloud auth configure-docker --quiet
           gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://gcr.io
          
       - name: check for updates
         run: |
-          echo first check for vairbales
-          echo $PROJECT_ID
           CHARTS=$(ls -d */ | sed 's|/||')
           for C in $CHARTS;do
             echo "checking $C for updates" 
@@ -78,12 +76,18 @@ jobs:
               yq e ".global.imageRegistry = \"$GCR\"" -i $C/values.yaml
               
               helm template ${C} |grep image:
-              helm package ${C} 
+              helm package ${C}
+              #helm gcs push temp/* ${VENDOR_REPO_NAME}
+              #helm repo update 
               rm -rf ${C} && cd ..
               rm -rf temp
               
+              yq e ".version = \"$VENDOR_VERSION\"" -i ../$C/mirror.yaml
+              git add . && git commit -m "automatic upgrade of $C chart" && git push
               echo "$C updated successfully"
             fi
-          done 
+          done
+          
+          
      
     
