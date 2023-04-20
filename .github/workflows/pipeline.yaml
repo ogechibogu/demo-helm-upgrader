@@ -16,8 +16,6 @@ jobs:
         uses: actions/checkout@v2
         
       - name: configure git
-        env: 
-          GIT_KEY: ${{ secrets.ACCESS_TOKEN }}
         run: |
           git config --global user.name "${GITHUB_ACTOR}"
           git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
