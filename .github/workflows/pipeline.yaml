@@ -1,9 +1,9 @@
 name: Upgrade helm chart
 
 env:
-  GCR: ${{ env.GCR }}
-  PROJECT: ${{ env.PROJECT_URL }}
-  PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+  GCR: ${{ vars.GCR }}
+  PROJECT: ${{ vars.PROJECT_URL }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   GIT_KEY: ${{ secrets.PAT }}
   GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
   
