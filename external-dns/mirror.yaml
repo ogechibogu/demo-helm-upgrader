@@ -1,5 +1,5 @@
 name: "external-dns"
-version: "6.19.1"
+version: "6.19.0"
 repo:
   name: "bitnami"
   repository: "https://charts.bitnami.com/bitnami"
