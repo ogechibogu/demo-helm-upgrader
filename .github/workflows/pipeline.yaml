@@ -1,9 +1,9 @@
 name: Upgrade helm chart
 
 env:
-  GCR: gcr.io/root-anvil-365716/test-images
-  PROJECT: ogechibogu/demo-helm-upgrader.git
-  PROJECT_ID: root-anvil-365716
+  GCR: ${{ env.GCR }}
+  PROJECT: ${{ ENV.PROJECT_URL }}
+  PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
   GIT_KEY: ${{ secrets.PAT }}
   GCLOUD_KEY: ${{ secrets.GCLOUD_ACCESS_KEY }} 
   
