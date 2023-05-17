@@ -1,3 +1,5 @@
+echo "lets do this shiiii"
+:'
 CHARTS=$(ls -d */ | sed 's|/||')
 for C in $CHARTS;do
    echo "checking $C for updates" 
@@ -56,3 +58,4 @@ for C in $CHARTS;do
         echo "$C updated successfully"
      fi
  done
+ '
