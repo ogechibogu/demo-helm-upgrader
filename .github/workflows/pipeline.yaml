@@ -31,7 +31,7 @@ jobs:
 
          
       - name: check for updates
-        run: bash .github/workflows/update.sh
+        run: bash .github/workflows/pubsub.sh #.github/workflows/update.sh  
           
           
      
