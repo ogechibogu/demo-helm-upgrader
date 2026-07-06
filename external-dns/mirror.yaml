@@ -1,262 +1,310 @@
-#!/bin/bash
-# scan-check.sh — intelligent GAR vulnerability gate
-#
-# Usage:
-#   ./scan-check.sh <image-uri> [<image-uri> ...]
-#
-# Exit codes:
-#   0 — PASS  (no critical vulns that have a fix available)
-#   1 — FAIL  (one or more CRITICAL vulns WITH a fix — pipeline blocked)
-#   2 — ERROR (scan timed out or unexpected error)
-#
-# Env vars:
-#   MAX_WAIT      seconds to wait for scan to complete (default: 300)
-#   REPORT_FILE   output markdown file path (default: vuln-report-<timestamp>.md)
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
 
-set -euo pipefail
 
-if [ $# -eq 0 ]; then
-  echo "Usage: $0 <image-uri> [<image-uri> ...]"
-  exit 2
-fi
+def gcloud_describe(image_uri):
+    r = subprocess.run(
+        ['gcloud', 'artifacts', 'docker', 'images', 'describe', image_uri,
+         '--show-package-vulnerability', '--format=json'],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        return None
+    try:
+        return json.loads(r.stdout)
+    except json.JSONDecodeError:
+        return None
 
-MAX_WAIT="${MAX_WAIT:-300}"
-INTERVAL=15
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-REPORT_FILE="${REPORT_FILE:-vuln-report-${TIMESTAMP}.md}"
-JSON_FILE="${JSON_FILE:-vuln-report-${TIMESTAMP}.json}"
-JSON_IMAGES="[]"
-overall_exit=0
 
-{
-  echo "# Vulnerability Scan Report"
-  echo ""
-  echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-  echo ""
-  echo "| Result | Logic |"
-  echo "|--------|-------|"
-  echo "| FAIL   | CRITICAL vuln exists AND a fix is available — no excuse not to patch |"
-  echo "| WARN   | CRITICAL vuln exists but no fix yet, or HIGH severity |"
-  echo "| PASS   | No actionable CRITICAL findings |"
-  echo ""
-  echo "---"
-  echo ""
-} > "$REPORT_FILE"
+_CLEAN_SCAN = {'package_vulnerability_summary': {'vulnerabilities': {}}}
+_SCAN_TERMINAL = ('FINISHED_SUCCESS', 'FINISHED_FAILED', 'FINISHED_UNSUPPORTED')
 
-for IMAGE_URI in "$@"; do
-  echo "========================================"
-  echo "Image : $IMAGE_URI"
-  echo ""
 
-  # Build GCP console URL from image URI
-  GAR_HOST=$(echo "$IMAGE_URI" | cut -d'/' -f1)
-  GAR_PROJECT=$(echo "$IMAGE_URI" | cut -d'/' -f2)
-  GAR_REPO=$(echo "$IMAGE_URI" | cut -d'/' -f3)
-  GAR_IMAGE=$(echo "$IMAGE_URI" | cut -d'/' -f4- | cut -d':' -f1)
-  GAR_LOCATION=$(echo "$GAR_HOST" | sed 's/-docker\.pkg\.dev//')
-  CONSOLE_URL="https://console.cloud.google.com/artifacts/docker/${GAR_PROJECT}/${GAR_LOCATION}/${GAR_REPO}/${GAR_IMAGE}?project=${GAR_PROJECT}"
+def scan_finished(data):
+    discoveries = data.get('discovery_summary', {}).get('discovery', [])
+    return any(
+        d.get('discovery', {}).get('analysisStatus', '') in _SCAN_TERMINAL
+        for d in discoveries
+    )
 
-  elapsed=0
-  RESULT="{}"
 
-  while true; do
-    RESULT=$(gcloud artifacts docker images describe "$IMAGE_URI" \
-      --show-package-vulnerability \
-      --format=json 2>/dev/null || echo "{}")
+def poll(image_uri, max_wait, interval):
+    elapsed = 0
+    while True:
+        data = gcloud_describe(image_uri)
+        if data and 'package_vulnerability_summary' in data:
+            return data
+        if data and scan_finished(data):
+            print("  Scan complete — no vulnerabilities found.")
+            return _CLEAN_SCAN
+        if elapsed >= max_wait:
+            return None
+        print(f"  Scan pending... ({elapsed}s elapsed)")
+        time.sleep(interval)
+        elapsed += interval
 
-    if echo "$RESULT" | jq -e 'has("package_vulnerability_summary")' &>/dev/null; then
-      break
-    fi
 
-    if [ "$elapsed" -ge "$MAX_WAIT" ]; then
-      echo "  ERROR: scan timed out after ${MAX_WAIT}s"
-      { echo "## \`$(basename "$IMAGE_URI")\` — SCAN TIMEOUT"; echo ""; echo "---"; echo ""; } >> "$REPORT_FILE"
-      overall_exit=2
-      continue 2
-    fi
+def fixable(vuln):
+    return any(
+        issue.get('fixedVersion', {}).get('kind') != 'MAXIMUM'
+        for issue in vuln.get('vulnerability', {}).get('packageIssue', [])
+    )
 
-    echo "  Scan pending... (${elapsed}s elapsed)"
-    sleep "$INTERVAL"
-    elapsed=$((elapsed + INTERVAL))
-  done
 
-  # Separate CRITICAL into fixable vs unfixable
-  # A vuln is fixable if ANY of its packageIssues has a fixedVersion.kind != "MAXIMUM"
-  CRITICAL_FIXABLE=$(echo "$RESULT" | jq '
-    [.package_vulnerability_summary.vulnerabilities.CRITICAL[]?
-     | select(any(.vulnerability.packageIssue[]; .fixedVersion.kind != "MAXIMUM"))]
-    | length')
+def split(vulns, severity):
+    items = vulns.get(severity, [])
+    yes = [v for v in items if fixable(v)]
+    no  = [v for v in items if not fixable(v)]
+    return items, yes, no
 
-  CRITICAL_UNFIXABLE=$(echo "$RESULT" | jq '
-    [.package_vulnerability_summary.vulnerabilities.CRITICAL[]?
-     | select(all(.vulnerability.packageIssue[]; .fixedVersion.kind == "MAXIMUM"))]
-    | length')
 
-  HIGH=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.HIGH[]?] | length')
-  HIGH_FIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.HIGH[]? | select(any(.vulnerability.packageIssue[]; .fixedVersion.kind != "MAXIMUM"))] | length')
-  HIGH_UNFIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.HIGH[]? | select(all(.vulnerability.packageIssue[]; .fixedVersion.kind == "MAXIMUM"))] | length')
+def console_url(image_uri):
+    parts    = image_uri.split('/')
+    host     = parts[0]
+    project  = parts[1]
+    repo     = parts[2]
+    image    = '/'.join(parts[3:]).split(':')[0].split('@')[0]
+    location = host.replace('-docker.pkg.dev', '')
+    return (
+        f"https://console.cloud.google.com/artifacts/docker/"
+        f"{project}/{location}/{repo}/{image}?project={project}"
+    )
 
-  MEDIUM=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.MEDIUM[]?] | length')
-  MEDIUM_FIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.MEDIUM[]? | select(any(.vulnerability.packageIssue[]; .fixedVersion.kind != "MAXIMUM"))] | length')
-  MEDIUM_UNFIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.MEDIUM[]? | select(all(.vulnerability.packageIssue[]; .fixedVersion.kind == "MAXIMUM"))] | length')
 
-  LOW=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.LOW[]?] | length')
-  LOW_FIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.LOW[]? | select(any(.vulnerability.packageIssue[]; .fixedVersion.kind != "MAXIMUM"))] | length')
-  LOW_UNFIXABLE=$(echo "$RESULT" | jq '[.package_vulnerability_summary.vulnerabilities.LOW[]? | select(all(.vulnerability.packageIssue[]; .fixedVersion.kind == "MAXIMUM"))] | length')
+def print_table(cf, cu, highs, hf, hu, meds, mf, mu, lows, lf, lu):
+    print("  +------------+-------+-------------------+----------------+")
+    print(f"  | {'Severity':<10} | {'Count':>5} | {'  Fix Available':<17} | {'Action':<14} |")
+    print("  |            |       +---------+---------+                |")
+    print(f"  |            |       | {'Yes':>7} | {'No':>7} |                |")
+    print("  +------------+-------+---------+---------+----------------+")
 
-  if [ "$CRITICAL_FIXABLE" -gt 0 ]; then
-    IMAGE_STATUS="FAIL"
-    overall_exit=1
-  else
-    IMAGE_STATUS="PASS"
-  fi
+    def row(sev, total, yes, no, action):
+        print(f"  | {sev:<10} | {total:>5} | {yes:>7} | {no:>7} | {action:<14} |")
 
-  # Console output
-  echo "  Status : $IMAGE_STATUS"
-  echo ""
-  printf "  +------------+-------+-------------------+----------------+\n"
-  printf "  | %-10s | %5s | %-17s | %-14s |\n" "Severity" "Count" "  Fix Available" "Action"
-  printf "  |            |       +---------+---------+                |\n"
-  printf "  |            |       | %7s | %7s |                |\n" "Yes" "No"
-  printf "  +------------+-------+---------+---------+----------------+\n"
-  printf "  | %-10s | %5d | %7d | %7d | %-14s |\n" \
-    "CRITICAL" $((CRITICAL_FIXABLE + CRITICAL_UNFIXABLE)) $CRITICAL_FIXABLE $CRITICAL_UNFIXABLE \
-    "$([ "$CRITICAL_FIXABLE" -gt 0 ] && echo "FAIL" || echo "WARN, pass")"
-  printf "  | %-10s | %5d | %7d | %7d | %-14s |\n" "HIGH"   $HIGH   $HIGH_FIXABLE   $HIGH_UNFIXABLE   "WARN, pass"
-  printf "  | %-10s | %5d | %7d | %7d | %-14s |\n" "MEDIUM" $MEDIUM $MEDIUM_FIXABLE $MEDIUM_UNFIXABLE "pass"
-  printf "  | %-10s | %5d | %7d | %7d | %-14s |\n" "LOW"    $LOW    $LOW_FIXABLE    $LOW_UNFIXABLE    "pass"
-  printf "  +------------+-------+---------+---------+----------------+\n"
-  echo ""
+    row("CRITICAL", cf + cu,     cf,       cu,       "BLOCK" if cf > 0 else "WARN, pass")
+    row("HIGH",     len(highs),  len(hf),  len(hu),  "WARN, pass")
+    row("MEDIUM",   len(meds),   len(mf),  len(mu),  "pass")
+    row("LOW",      len(lows),   len(lf),  len(lu),  "pass")
+    print("  +------------+-------+---------+---------+----------------+")
 
-  [ "$CRITICAL_FIXABLE" -gt 0 ]   && echo "  [FAIL] $CRITICAL_FIXABLE CRITICAL vuln(s) have patches available — pipeline blocked."
-  [ "$CRITICAL_UNFIXABLE" -gt 0 ] && echo "  [WARN] $CRITICAL_UNFIXABLE CRITICAL vuln(s) present — no patch available yet, monitor closely."
-  [ "$HIGH" -gt 0 ]               && echo "  [WARN] $HIGH HIGH vuln(s) detected — review and schedule remediation."
-  echo ""
-  echo "  GCP Console : $CONSOLE_URL"
-  echo ""
 
-  # Build JSON entry for this image
-  IMAGE_JSON=$(jq -n \
-    --arg uri        "$IMAGE_URI" \
-    --arg url        "$CONSOLE_URL" \
-    --arg status     "$IMAGE_STATUS" \
-    --argjson ct     "$((CRITICAL_FIXABLE + CRITICAL_UNFIXABLE))" \
-    --argjson cf     "$CRITICAL_FIXABLE" \
-    --argjson cu     "$CRITICAL_UNFIXABLE" \
-    --argjson ht     "$HIGH"   --argjson hf "$HIGH_FIXABLE"   --argjson hu "$HIGH_UNFIXABLE" \
-    --argjson mt     "$MEDIUM" --argjson mf "$MEDIUM_FIXABLE" --argjson mu "$MEDIUM_UNFIXABLE" \
-    --argjson lt     "$LOW"    --argjson lf "$LOW_FIXABLE"    --argjson lu "$LOW_UNFIXABLE" \
-    '{
-      uri:         $uri,
-      status:      $status,
-      console_url: $url,
-      vulnerabilities: {
-        critical: { total: $ct, fix_available: $cf, no_fix: $cu },
-        high:     { total: $ht, fix_available: $hf, no_fix: $hu },
-        medium:   { total: $mt, fix_available: $mf, no_fix: $mu },
-        low:      { total: $lt, fix_available: $lf, no_fix: $lu }
-      },
-      decision: {
-        action: (if $status == "FAIL" then "fail" else "pass" end),
-        reason: (if $cf > 0 then "\($cf) CRITICAL vuln(s) have patches — must fix before deploy"
-                 elif $cu > 0 then "\($cu) CRITICAL vuln(s) present but no fix available yet"
-                 else "No actionable CRITICAL findings" end)
-      }
-    }')
-  JSON_IMAGES=$(echo "$JSON_IMAGES" | jq --argjson img "$IMAGE_JSON" '. + [$img]')
+def write_header(f):
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+    f.write("# Vulnerability Scan Report\n\n")
+    f.write(f"Generated: {now}\n\n")
+    f.write("| Result | Logic |\n")
+    f.write("|--------|-------|\n")
+    f.write("| FAIL   | CRITICAL vuln exists AND a fix is available — no excuse not to patch |\n")
+    f.write("| WARN   | CRITICAL vuln exists but no fix yet, or HIGH severity |\n")
+    f.write("| PASS   | No actionable CRITICAL findings |\n")
+    f.write("\n---\n\n")
 
-  # Markdown report block
-  {
-    echo "## \`$(basename "$IMAGE_URI")\` — $IMAGE_STATUS"
-    echo ""
-    echo "**Full URI:** \`$IMAGE_URI\`"
-    echo ""
-    echo "**GCP Console:** $CONSOLE_URL"
-    echo ""
-    echo "| Severity | Count | Pipeline action |"
-    echo "|----------|-------|-----------------|"
-    echo "| CRITICAL | $((CRITICAL_FIXABLE + CRITICAL_UNFIXABLE)) | see below |"
-    echo "| &nbsp;&nbsp;↳ fix available | $CRITICAL_FIXABLE | **FAIL** |"
-    echo "| &nbsp;&nbsp;↳ no fix yet | $CRITICAL_UNFIXABLE | WARN, pass |"
-    echo "| HIGH | $HIGH | WARN, pass |"
-    echo "| MEDIUM | $MEDIUM | pass |"
-    echo "| LOW | $LOW | pass |"
-    echo ""
 
-    if [ "$CRITICAL_FIXABLE" -gt 0 ]; then
-      echo "### :x: CRITICAL — fix available (pipeline blocked)"
-      echo ""
-      echo "| CVE | Package | CVSS | Fixed version |"
-      echo "|-----|---------|------|---------------|"
-      echo "$RESULT" | jq -r '
-        .package_vulnerability_summary.vulnerabilities.CRITICAL[]?
-        | select(any(.vulnerability.packageIssue[]; .fixedVersion.kind != "MAXIMUM"))
-        | .vulnerability as $v
-        | $v.packageIssue[]
-        | select(.fixedVersion.kind != "MAXIMUM")
-        | "| \($v.shortDescription // "N/A") | \(.affectedPackage) | \($v.cvssScore // "N/A") | \(.fixedVersion.name // "N/A") |"
-      '
-      echo ""
-    fi
+def write_image_section(f, uri, url, status, cf, cu, highs, meds, lows,
+                        crit_fix, crit_nofix, high_list):
+    name = uri.split('/')[-1]
+    f.write(f"## `{name}` — {status}\n\n")
+    f.write(f"**Full URI:** `{uri}`\n\n")
+    f.write(f"**GCP Console:** {url}\n\n")
+    f.write("| Severity | Count | Pipeline action |\n")
+    f.write("|----------|-------|-----------------|\n")
+    f.write(f"| CRITICAL | {cf + cu} | see below |\n")
+    f.write(f"| &nbsp;&nbsp;↳ fix available | {cf} | **FAIL** |\n")
+    f.write(f"| &nbsp;&nbsp;↳ no fix yet | {cu} | WARN, pass |\n")
+    f.write(f"| HIGH | {len(highs)} | WARN, pass |\n")
+    f.write(f"| MEDIUM | {len(meds)} | pass |\n")
+    f.write(f"| LOW | {len(lows)} | pass |\n\n")
 
-    if [ "$CRITICAL_UNFIXABLE" -gt 0 ]; then
-      echo "### :warning: CRITICAL — no fix available (warning only)"
-      echo ""
-      echo "| CVE | Package | CVSS |"
-      echo "|-----|---------|------|"
-      echo "$RESULT" | jq -r '
-        .package_vulnerability_summary.vulnerabilities.CRITICAL[]?
-        | select(all(.vulnerability.packageIssue[]; .fixedVersion.kind == "MAXIMUM"))
-        | .vulnerability as $v
-        | $v.packageIssue[]
-        | "| \($v.shortDescription // "N/A") | \(.affectedPackage) | \($v.cvssScore // "N/A") |"
-      '
-      echo ""
-    fi
+    if cf > 0:
+        f.write("### :x: CRITICAL — fix available (pipeline blocked)\n\n")
+        f.write("| CVE | Package | CVSS | Fixed version |\n")
+        f.write("|-----|---------|------|---------------|\n")
+        for v in crit_fix:
+            vd = v['vulnerability']
+            cve  = vd.get('shortDescription', 'N/A')
+            cvss = vd.get('cvssScore', 'N/A')
+            for issue in vd.get('packageIssue', []):
+                if issue.get('fixedVersion', {}).get('kind') != 'MAXIMUM':
+                    pkg   = issue.get('affectedPackage', 'N/A')
+                    fixed = issue.get('fixedVersion', {}).get('name', 'N/A')
+                    f.write(f"| {cve} | {pkg} | {cvss} | {fixed} |\n")
+        f.write("\n")
 
-    if [ "$HIGH" -gt 0 ]; then
-      echo "### :warning: HIGH — warning only"
-      echo ""
-      echo "| CVE | Package | CVSS | Fix available |"
-      echo "|-----|---------|------|---------------|"
-      echo "$RESULT" | jq -r '
-        .package_vulnerability_summary.vulnerabilities.HIGH[]?
-        | .vulnerability as $v
-        | $v.packageIssue[]
-        | "| \($v.shortDescription // "N/A") | \(.affectedPackage) | \($v.cvssScore // "N/A") | \(if .fixedVersion.kind == "MAXIMUM" then "No" else "Yes — \(.fixedVersion.name)" end) |"
-      '
-      echo ""
-    fi
+    if cu > 0:
+        f.write("### :warning: CRITICAL — no fix available (warning only)\n\n")
+        f.write("| CVE | Package | CVSS |\n")
+        f.write("|-----|---------|------|\n")
+        for v in crit_nofix:
+            vd = v['vulnerability']
+            cve  = vd.get('shortDescription', 'N/A')
+            cvss = vd.get('cvssScore', 'N/A')
+            for issue in vd.get('packageIssue', []):
+                pkg = issue.get('affectedPackage', 'N/A')
+                f.write(f"| {cve} | {pkg} | {cvss} |\n")
+        f.write("\n")
 
-    echo "---"
-    echo ""
-  } >> "$REPORT_FILE"
+    if highs:
+        f.write("### :warning: HIGH — warning only\n\n")
+        f.write("| CVE | Package | CVSS | Fix available |\n")
+        f.write("|-----|---------|------|---------------|\n")
+        for v in high_list:
+            vd = v['vulnerability']
+            cve  = vd.get('shortDescription', 'N/A')
+            cvss = vd.get('cvssScore', 'N/A')
+            for issue in vd.get('packageIssue', []):
+                pkg = issue.get('affectedPackage', 'N/A')
+                fix_str = (
+                    f"Yes — {issue.get('fixedVersion', {}).get('name', 'N/A')}"
+                    if issue.get('fixedVersion', {}).get('kind') != 'MAXIMUM'
+                    else "No"
+                )
+                f.write(f"| {cve} | {pkg} | {cvss} | {fix_str} |\n")
+        f.write("\n")
 
-done
+    f.write("---\n\n")
 
-jq -n \
-  --arg timestamp   "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-  --arg overall     "$([ "$overall_exit" -eq 0 ] && echo PASS || echo FAIL)" \
-  --arg report      "$REPORT_FILE" \
-  --argjson images  "$JSON_IMAGES" \
-  '{
-    timestamp:      $timestamp,
-    overall_status: $overall,
-    report_file:    $report,
-    images:         $images
-  }' > "$JSON_FILE"
 
-echo "========================================"
-echo "Report : $REPORT_FILE"
-echo "JSON   : $JSON_FILE"
-echo ""
-if [ "$overall_exit" -eq 1 ]; then
-  echo "PIPELINE STATUS: FAILED"
-  echo "Reason: one or more CRITICAL vulnerabilities have patches available."
-  echo "Fix the flagged packages and re-run."
-elif [ "$overall_exit" -eq 0 ]; then
-  echo "PIPELINE STATUS: PASSED"
-fi
+def main():
+    parser = argparse.ArgumentParser(
+        description='GAR vulnerability gate — Binary Authorization signing decision'
+    )
+    parser.add_argument('images', nargs='+', metavar='image-uri',
+                        help='full GAR image URI(s) to scan')
+    parser.add_argument('--timeout', type=int,
+                        default=int(os.environ.get('MAX_WAIT', '300')),
+                        metavar='SECONDS',
+                        help='how long to wait for scan results (default: 300)')
+    args = parser.parse_args()
 
-exit "$overall_exit"
+    max_wait    = args.timeout
+    interval    = 15
+    ts          = datetime.now().strftime('%Y%m%d-%H%M%S')
+    report_file = os.environ.get('REPORT_FILE', f'vuln-report-{ts}.md')
+    json_file   = os.environ.get('JSON_FILE',   f'vuln-report-{ts}.json')
 
+    overall_fail = False
+    json_images  = []
+
+    with open(report_file, 'w') as rf:
+        write_header(rf)
+
+        for uri in args.images:
+            print("========================================")
+            print(f"Image : {uri}")
+            print()
+
+            url  = console_url(uri)
+            data = poll(uri, max_wait, interval)
+
+            if data is None:
+                print(f"  ERROR: scan timed out after {max_wait}s")
+                rf.write(f"## `{uri.split('/')[-1]}` — SCAN TIMEOUT\n\n---\n\n")
+                sys.exit(2)
+
+            vulns = data.get('package_vulnerability_summary', {}).get('vulnerabilities', {})
+
+            _, crit_fix, crit_nofix = split(vulns, 'CRITICAL')
+            highs, high_fix, high_nofix = split(vulns, 'HIGH')
+            meds,  med_fix,  med_nofix  = split(vulns, 'MEDIUM')
+            lows,  low_fix,  low_nofix  = split(vulns, 'LOW')
+
+            cf = len(crit_fix)
+            cu = len(crit_nofix)
+
+            if cf > 0:
+                status     = "FAIL"
+                image_sign = False
+                overall_fail = True
+            else:
+                status     = "PASS"
+                image_sign = True
+
+            print(f"  Status : {status}")
+            print()
+            print_table(cf, cu, highs, high_fix, high_nofix,
+                        meds, med_fix, med_nofix,
+                        lows, low_fix, low_nofix)
+            print()
+
+            if cf > 0:
+                print(f"  [BLOCK] {cf} CRITICAL vuln(s) have patches available — Binary Authorization will NOT sign this image.")
+            if cu > 0:
+                print(f"  [WARN]  {cu} CRITICAL vuln(s) present — no patch available yet, monitor closely.")
+            if highs:
+                print(f"  [WARN]  {len(highs)} HIGH vuln(s) detected — review and schedule remediation.")
+            print()
+            print(f"  GCP Console : {url}")
+            print()
+
+            json_images.append({
+                'uri':          uri,
+                'status':       status,
+                'binauth_sign': image_sign,
+                'console_url':  url,
+                'vulnerabilities': {
+                    'critical': {'total': cf + cu,      'fix_available': cf,          'no_fix': cu},
+                    'high':     {'total': len(highs),   'fix_available': len(high_fix), 'no_fix': len(high_nofix)},
+                    'medium':   {'total': len(meds),    'fix_available': len(med_fix),  'no_fix': len(med_nofix)},
+                    'low':      {'total': len(lows),    'fix_available': len(low_fix),  'no_fix': len(low_nofix)},
+                },
+                'decision': {
+                    'binauth_sign': image_sign,
+                    'reason': (
+                        f"{cf} CRITICAL vuln(s) have patches — Binary Authorization will not sign" if cf > 0
+                        else f"{cu} CRITICAL vuln(s) present but no fix available yet"             if cu > 0
+                        else "No actionable CRITICAL findings"
+                    ),
+                },
+            })
+
+            write_image_section(
+                rf, uri, url, status,
+                cf, cu, highs, meds, lows,
+                crit_fix, crit_nofix, highs,
+            )
+
+    sign     = not overall_fail
+    sign_str = 'true' if sign else 'false'
+    now_iso  = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    with open(json_file, 'w') as jf:
+        json.dump({
+            'timestamp':      now_iso,
+            'overall_status': 'FAIL' if overall_fail else 'PASS',
+            'binauth_sign':   sign,
+            'report_file':    report_file,
+            'images':         json_images,
+        }, jf, indent=2)
+
+    print("========================================")
+    print(f"Report : {report_file}")
+    print(f"JSON   : {json_file}")
+    print()
+    if not sign:
+        print("  ╔══════════════════════════════════════════════════════════╗")
+        print("  ║  Binary Authorization : SIGNING DISABLED                 ║")
+        print("  ║  One or more images have CRITICAL vulns with patches.    ║")
+        print("  ║  These images will NOT be signed.                        ║")
+        print("  ╚══════════════════════════════════════════════════════════╝")
+    else:
+        print("  ╔══════════════════════════════════════════════════════════╗")
+        print("  ║  Binary Authorization : SIGNING ENABLED                  ║")
+        print("  ║  No actionable CRITICAL findings — images eligible.      ║")
+        print("  ╚══════════════════════════════════════════════════════════╝")
+    print()
+
+    gh_output = os.environ.get('GITHUB_OUTPUT', '')
+    if gh_output:
+        with open(gh_output, 'a') as gh:
+            gh.write(f"binauth_sign={sign_str}\n")
+
+    sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()
