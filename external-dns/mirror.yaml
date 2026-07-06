@@ -186,6 +186,7 @@ def main():
     ts          = datetime.now().strftime('%Y%m%d-%H%M%S')
     report_file = os.environ.get('REPORT_FILE', f'vuln-report-{ts}.md')
     json_file   = os.environ.get('JSON_FILE',   f'vuln-report-{ts}.json')
+    sign_file   = os.environ.get('SIGN_FILE',   '/tmp/binauth_sign')
 
     overall_fail = False
     json_images  = []
@@ -224,6 +225,9 @@ def main():
                 status     = "PASS"
                 image_sign = True
 
+            with open(sign_file, 'w') as sf:
+                sf.write('true' if image_sign else 'false')
+
             print(f"  Status : {status}")
             print()
             print_table(cf, cu, highs, high_fix, high_nofix,
@@ -239,6 +243,7 @@ def main():
                 print(f"  [WARN]  {len(highs)} HIGH vuln(s) detected — review and schedule remediation.")
             print()
             print(f"  GCP Console : {url}")
+            print(f"  binauth_sign : {'true' if image_sign else 'false'}")
             print()
 
             json_images.append({
@@ -268,15 +273,12 @@ def main():
                 crit_fix, crit_nofix, highs,
             )
 
-    sign     = not overall_fail
-    sign_str = 'true' if sign else 'false'
-    now_iso  = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    now_iso = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     with open(json_file, 'w') as jf:
         json.dump({
             'timestamp':      now_iso,
             'overall_status': 'FAIL' if overall_fail else 'PASS',
-            'binauth_sign':   sign,
             'report_file':    report_file,
             'images':         json_images,
         }, jf, indent=2)
@@ -284,24 +286,6 @@ def main():
     print("========================================")
     print(f"Report : {report_file}")
     print(f"JSON   : {json_file}")
-    print()
-    if not sign:
-        print("  ╔══════════════════════════════════════════════════════════╗")
-        print("  ║  Binary Authorization : SIGNING DISABLED                 ║")
-        print("  ║  One or more images have CRITICAL vulns with patches.    ║")
-        print("  ║  These images will NOT be signed.                        ║")
-        print("  ╚══════════════════════════════════════════════════════════╝")
-    else:
-        print("  ╔══════════════════════════════════════════════════════════╗")
-        print("  ║  Binary Authorization : SIGNING ENABLED                  ║")
-        print("  ║  No actionable CRITICAL findings — images eligible.      ║")
-        print("  ╚══════════════════════════════════════════════════════════╝")
-    print()
-
-    gh_output = os.environ.get('GITHUB_OUTPUT', '')
-    if gh_output:
-        with open(gh_output, 'a') as gh:
-            gh.write(f"binauth_sign={sign_str}\n")
 
     sys.exit(0)
 
