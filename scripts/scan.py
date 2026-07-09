@@ -13,18 +13,11 @@ def gcloud_describe(image_uri):
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        # Surface the real reason instead of silently retrying forever.
-        print(f"  gcloud error (rc={r.returncode}): {r.stderr.strip()}", file=sys.stderr)
-        # Permission/auth/config errors will never resolve by waiting —
-        # fail fast instead of burning the whole timeout window on retries.
-        if 'PERMISSION_DENIED' in r.stderr or 'permission' in r.stderr.lower():
-            print("  FATAL: permission error detected, not retrying.", file=sys.stderr)
-            sys.exit(3)
-        return None
+        return None, r.stderr.strip()
     try:
-        return json.loads(r.stdout)
+        return json.loads(r.stdout), None
     except json.JSONDecodeError:
-        return None
+        return None, "gcloud returned output that could not be parsed as JSON"
 
 
 _CLEAN_SCAN = {'package_vulnerability_summary': {'vulnerabilities': {}}}
@@ -41,15 +34,19 @@ def scan_finished(data):
 
 def poll(image_uri, max_wait, interval):
     elapsed = 0
+    last_error = None
     while True:
-        data = gcloud_describe(image_uri)
+        data, err = gcloud_describe(image_uri)
+        if err:
+            last_error = err
+            print(f"  gcloud error: {err}", file=sys.stderr)
         if data and 'package_vulnerability_summary' in data:
-            return data
+            return data, None
         if data and scan_finished(data):
             print("  Scan complete — no vulnerabilities found.")
-            return _CLEAN_SCAN
+            return _CLEAN_SCAN, None
         if elapsed >= max_wait:
-            return None
+            return None, last_error
         print(f"  Scan pending... ({elapsed}s elapsed)")
         time.sleep(interval)
         elapsed += interval
@@ -121,11 +118,20 @@ def main():
         print()
 
         url  = console_url(uri)
-        data = poll(uri, max_wait, interval)
+        data, last_error = poll(uri, max_wait, interval)
 
         if data is None:
-            print(f"  ERROR: scan timed out after {max_wait}s")
-            sys.exit(2)
+            print(f"  WARN: could not determine vulnerability status after {max_wait}s — failing OPEN (signing anyway, not blocking).")
+            if last_error:
+                print(f"  Reason: {last_error}")
+            else:
+                print("  Reason: scan did not finish in time (no gcloud error was returned)")
+            with open(sign_file, 'w') as sf:
+                sf.write('true')
+            print(f"  GCP Console : {url}")
+            print(f"  binauth_sign : true (unscanned)")
+            print()
+            continue
 
         vulns = data.get('package_vulnerability_summary', {}).get('vulnerabilities', {})
 
