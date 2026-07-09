@@ -13,6 +13,13 @@ def gcloud_describe(image_uri):
         capture_output=True, text=True,
     )
     if r.returncode != 0:
+        # Surface the real reason instead of silently retrying forever.
+        print(f"  gcloud error (rc={r.returncode}): {r.stderr.strip()}", file=sys.stderr)
+        # Permission/auth/config errors will never resolve by waiting —
+        # fail fast instead of burning the whole timeout window on retries.
+        if 'PERMISSION_DENIED' in r.stderr or 'permission' in r.stderr.lower():
+            print("  FATAL: permission error detected, not retrying.", file=sys.stderr)
+            sys.exit(3)
         return None
     try:
         return json.loads(r.stdout)
