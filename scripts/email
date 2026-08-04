@@ -1,0 +1,26 @@
+Subject: TLS min version in cluster: staying at 1.2 — full findings
+
+Hi [name],
+
+Following up since we haven't been able to find time to meet — wanted to get this over in writing given where things stand.
+
+The minimum TLS version in the cluster will stay at 1.2, with 1.3 allowed but not enforced as a floor. This wasn't a quick conclusion — I ran a full investigation across all three traffic hops (client → gateway, gateway → backend, and pod-to-pod), tested against a self-managed Istio environment, a personal GKE project, and our actual dev cluster, and cross-checked the findings against Istio's own source code, the Kubernetes Gateway API specification, and Google Cloud's documentation. Summary below.
+
+Client → API Gateway
+Our platform uses the Kubernetes-standard Gateway API. That spec includes an "options" extension field intended to support things like TLS version control, but I confirmed directly in Istio's source code that this implementation only honors two specific options (TLS termination mode and cipher suites) — minimum TLS version is not implemented. There's an explicit comment in Istio's own codebase confirming this: "Not yet implemented: ... max protocol version." Separately, Google's own modernization documentation recommends moving from the Kubernetes Gateway API to Istio's native Gateway resource for our control plane, which does support this setting — I validated that mechanism works correctly on a self-managed test environment, though not yet on our production cluster.
+
+Gateway → Backend
+The standard mechanism here is BackendTLSPolicy. Its own specification (a Kubernetes Gateway API Enhancement Proposal, GEP-1897) explicitly excludes TLS version control as a design goal: "We originally proposed allowing the configuration of expected TLS versions, but determined that this was not needed in the first round." I also confirmed in Istio's source code that the policy's generic extension field is never read for this purpose either.
+
+Pod-to-Pod (mesh-wide)
+This is the most conclusive finding of the three. The mesh-wide minimum TLS version is controlled by a setting called meshMTLS.minProtocolVersion, normally changed via a ConfigMap in istio-system. Our cluster runs on Google's TRAFFIC_DIRECTOR control plane implementation, and Google's own documentation states directly: "If you directly onboarded to Cloud Service Mesh with a managed TRAFFIC_DIRECTOR control plane implementation, then you cannot change this setting." I verified the same mechanism works correctly on a self-managed Istio environment, which confirms this is a platform-specific restriction, not a configuration error on our end.
+
+What this means in practice: across all three hops, we don't currently have a supported way to raise the floor above TLS 1.2 within the mesh itself, given the control plane implementation we're on.
+
+Next steps I'd propose:
+1. Open a support case with Google to confirm whether there's any alternative or allow-listed path for TRAFFIC_DIRECTOR, and to understand their roadmap.
+2. For the client-facing hop specifically, evaluate enforcing the floor one layer upstream — at the GCP HTTPS Load Balancer via an SSL Policy, or at Apigee X's own TLS configuration — both of which sit outside the Istio limitations described above.
+3. Validate the native Gateway resource directly on our managed cluster to close the one remaining gap in the evidence.
+4. Treat the pod-to-pod and gateway-to-backend hops as blocked pending Google's response, since they're not something we can engineer around ourselves.
+
+I have a fuller write-up with the exact source code references, spec citations, and doc links if it's useful for the record or for whoever opens the support case. Happy to walk through any of it live once you have time — otherwise happy to keep going over email.
